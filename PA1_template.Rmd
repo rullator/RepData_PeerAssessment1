@@ -1,20 +1,160 @@
 # Reproducible Research: Peer Assessment 1
 
-
+Check and install all required packages.
+```{r}
+getPckg <- function(pckg) install.packages(pckg, repos = "http://cran.r-project.org")
+pckg = try(require(knitr))
+if(!pckg) {
+  cat("Installing 'knitr' from CRAN\n")
+  getPckg("knitr")
+  require("knitr")
+}
+pckg = try(require(data.table))
+if(!pckg) {
+  cat("Installing 'data.table' from CRAN\n")
+  getPckg("data.table")
+  require("data.table")
+}
+pckg = try(require(xtable))
+if(!pckg) {
+  cat("Installing 'xtable' from CRAN\n")
+  getPckg("xtable")
+  require("xtable")
+}
+pckg = try(require(ggplot2))
+if(!pckg) {
+  cat("Installing 'ggplot' from CRAN\n")
+  getPckg("ggplot2")
+  require("ggplot2")
+}
+```
 ## Loading and preprocessing the data
 
+> Show any code that is needed to
+> 
+> 1. Load the data (i.e. read.csv())
+> 
+> 2. Process/transform the data (if necessary) into a format suitable for your analysis
+
+Unzip the compressed dataset and reformat the class of date-row to date.
+```{r}
+unzip(file.path(getwd(), "activity.zip"))
+dt <- read.csv(file.path(getwd(), "activity.csv"))
+dt <- data.table(dt)
+dt$date <- as.Date(as.character(dt$date),format="%Y-%m-%d")
+```
 
 
 ## What is mean total number of steps taken per day?
 
+> For this part of the assignment, you can ignore the missing values in the dataset.
+> 
+> 1. Make a histogram of the total number of steps taken each day
 
+```{r histogramStepsPerDay}
+dailymean <- aggregate(dt$steps, by=list(dt$date), FUN=mean, na.rm=TRUE)
+names(dailymean) <- c("Date", "Mean");
+hist(dailymean$Mean, xlab="Steps per day", main="Histogram: Steps per day", col="red")
+```
+
+> 2. Calculate and report the mean and median total number of steps taken per day
+
+```{r, results='asis'}
+dailymedian <- aggregate(dt$steps, by=list(dt$date), FUN=median, na.rm=TRUE);
+names(dailymedian) <- c("Date", "Median");
+print(xtable(cbind(as.character(dailymean$Date), dailymean$Mean, dailymedian$Median), type="html", include.rownames=FALSE))
+```
 
 ## What is the average daily activity pattern?
 
+> 1. Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+
+```{r}
+intervalmean <- aggregate(dt$steps, by=list(dt$interval), FUN=mean, na.rm=TRUE)
+```
+
+```{r timeseriesStepsPerInterval}
+plot(x=1:length(unique(dt$interval)),y=intervalmean$x,type="l",ylab="Steps",xlab="",xaxt="n", main="Averaged amount of steps taken in 24h")
+axis(1, seq(0,288,24), seq(0,288,24)*5/60)
+```
+
+> 2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r, results='asis'}
+intervalmean$Group.1[which(intervalmean$x == max(intervalmean$x))]
+```
 
 
 ## Imputing missing values
+> Note that there are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
 
+> 1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with NAs)
+
+```{r, results='asis'}
+print(sum(is.na(dt$steps)))
+```
+
+> 2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+
+The mean calculated in the previous task will be used to fill in the missing values.
+
+> 3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
+```{r, results='asis'}
+dt_noNA <- dt
+for (i in 1:length(dt$interval[is.na(dt$steps)])) {
+  if (length(intervalmean$x[dt$interval[is.na(dt$steps)][i]]) == 0)
+    dt_noNA$steps[is.na(dt$steps)][i] <- 0
+  else
+    dt_noNA$steps[is.na(dt$steps)][i] <- intervalmean$x[dt$interval[is.na(dt$steps)][i]]
+}
+```
+
+> 4. Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day.
+
+```{r, results='asis'}
+dailymean_noNA <- aggregate(dt_noNA$steps, by=list(dt_noNA$date), FUN=mean, na.rm=TRUE)
+names(dailymean_noNA) <- c("Date", "Mean");
+hist(dailymean_noNA$Mean, xlab="Steps per day", main="Histogram: Steps per day (no NA)", col="red")
+
+dailymedian_noNA <- aggregate(dt_noNA$steps, by=list(dt_noNA$date), FUN=median, na.rm=TRUE);
+names(dailymedian_noNA) <- c("Date", "Median");
+print(xtable(cbind(as.character(dailymean_noNA$Date), dailymean_noNA$Mean, dailymedian_noNA$Median), type='html', include.rownames=FALSE))
+```
+
+> Do these values differ from the estimates from the first part of the assignment? 
+
+Yes.
+
+> What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+As expected, the mean without missing values is increased as compared to the dataset containing missing values. The Median does not differ. Filling missing values has a certain impact of the data, whereas the filling strategy also has its influence. One should be carefully choose the right strategy and also think about, why there are missing values and wether they should be filled at all.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+> 1. Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+
+```{r}
+tmp <- as.numeric(factor(weekdays(dt_noNA$date), levels=unique(weekdays(dt_noNA$date))))
+tmp[tmp >= 6] <- "Weekend"
+tmp[tmp < 6] <- "Weekday"
+dt_noNA_weekdays <- cbind(dt, factor(tmp, levels=c("Weekday", "Weekend")))
+names(dt_noNA_weekdays)[4] <- "Weekend"
+```
+
+> 2. Make a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). The plot should look something like the following, which was creating using simulated data:
+
+```{r}
+intervalmean_noNA_weekdays <- aggregate(dt_noNA_weekdays$steps[dt_noNA_weekdays$Weekend == "Weekday"], by=list(dt$interval[dt_noNA_weekdays$Weekend == "Weekday"]), FUN=mean, na.rm=TRUE)
+intervalmean_noNA_weekend <- aggregate(dt_noNA_weekdays$steps[dt_noNA_weekdays$Weekend == "Weekend"], by=list(dt$interval[dt_noNA_weekdays$Weekend == "Weekend"]), FUN=mean, na.rm=TRUE)
+```
+
+```{r timeseriesStepsPerIntervalAndWeekday}
+layout(matrix(c(1,2), 2, 1, byrow = TRUE))
+plot(x=1:length(unique(dt$interval)),y=intervalmean_noNA_weekdays$x,type="l",ylab="Steps",xlab="",xaxt="n", main="Averaged amount of steps taken in 24h [Weekdays]")
+axis(1, seq(0,288,24), seq(0,288,24)*5/60)
+plot(x=1:length(unique(dt$interval)),y=intervalmean_noNA_weekend$x,type="l",ylab="Steps",xlab="",xaxt="n", main="Averaged amount of steps taken in 24h [Weekend]")
+axis(1, seq(0,288,24), seq(0,288,24)*5/60)
+```
+
